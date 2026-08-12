@@ -17,6 +17,25 @@ from pathlib import Path
 
 MAX_FPS = 2.0
 
+_FPS_MODE_FLAG: list[str] | None = None
+
+
+def _vfr_flag() -> list[str]:
+    """Return the variable-frame-rate flag this ffmpeg understands.
+
+    `-vsync` was deprecated in favour of `-fps_mode` (ffmpeg 5.0) and removed
+    outright in later versions, so probe once and cache rather than assuming.
+    """
+    global _FPS_MODE_FLAG
+    if _FPS_MODE_FLAG is None:
+        probe = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-h", "full"],
+            capture_output=True, text=True,
+        )
+        supported = "-fps_mode" in (probe.stdout + probe.stderr)
+        _FPS_MODE_FLAG = ["-fps_mode", "vfr"] if supported else ["-vsync", "vfr"]
+    return _FPS_MODE_FLAG
+
 
 def _clamp_fps(fps: float, duration_seconds: float, max_frames: int) -> tuple[float, int]:
     fps = min(fps, MAX_FPS)
@@ -230,7 +249,7 @@ def extract_scene_change(
     cmd += [
         "-i", str(Path(video_path).resolve()),
         "-vf", vf,
-        "-vsync", "vfr",
+        *_vfr_flag(),
         "-frames:v", str(max_frames),
         "-q:v", "4",
         output_pattern,
