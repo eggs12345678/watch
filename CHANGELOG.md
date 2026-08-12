@@ -2,6 +2,12 @@
 
 All notable changes to `/watch` are documented here.
 
+## [Unreleased]
+
+### Fixed
+- Scene-change extraction no longer passes ffmpeg's removed `-vsync` flag. It was deprecated in favour of `-fps_mode` (ffmpeg 5.0) and removed in later versions, so on a current ffmpeg (reproduced on 9.0) `extract_scene_change()` aborted with `Unrecognized option 'vsync'` and `/watch` failed on every video. `frames.py` now probes once for `-fps_mode` support and falls back to `-vsync` on older builds.
+- Scene-change extraction falls back to uniform sampling when the detected frames are clustered, not just when there are too few of them. `uniform_fallback_min` counted frames without checking coverage, so a screencast could clear the bar while leaving minutes unsampled — a 17m43s screen recording yielded 13 frames with two gaps of 4m15s and 6m25s, over 10 minutes with no frame at all. A new `max_gap_ratio` (default 0.25) resamples uniformly when the widest gap exceeds that fraction of the range, cutting the largest blind spot on that video from 36.3% to 1.3%.
+
 ## [0.2.0] — 2026-05-25
 
 Based on [bradautomates/claude-video](https://github.com/bradautomates/claude-video) v0.1.3 by Bradley Bonanno (MIT). Its pipeline (yt-dlp + ffmpeg + Whisper) is preserved; everything below is additive.
