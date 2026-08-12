@@ -211,6 +211,7 @@ def extract_scene_change(
     resolution: int = 512,
     max_frames: int = 100,
     uniform_fallback_min: int = 10,
+    max_gap_ratio: float = 0.25,
     start_seconds: float | None = None,
     end_seconds: float | None = None,
 ) -> list[dict]:
@@ -226,6 +227,12 @@ def extract_scene_change(
     On `uniform_fallback_min`: static or near-static videos (screen recordings,
     long talking heads) yield very few scene changes. Fall back to uniform
     sampling — sparse frames > almost no frames.
+
+    On `max_gap_ratio`: count is not coverage. A screencast can cut hard between
+    UI states and then sit still for minutes, clearing the count bar while
+    leaving most of the video unsampled. Fall back when the widest unsampled
+    stretch exceeds this fraction of the range, since evenly-spaced frames beat
+    a cluster with a hole in it.
     """
     if shutil.which("ffmpeg") is None:
         raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
@@ -279,21 +286,34 @@ def extract_scene_change(
 
     frames = sorted(out_dir.glob("frame_*.jpg"))
 
-    # Fallback: too few scene frames means this video is static-ish.
-    if len(frames) < uniform_fallback_min:
+    # Resolve the effective range once — both the coverage check and the
+    # fallback need it. Only probe the file when the end is left open.
+    eff_start = start_seconds if start_seconds is not None else 0.0
+    eff_end = end_seconds if end_seconds is not None else get_metadata(video_path)["duration_seconds"]
+    eff_duration = max(0.1, eff_end - eff_start)
+
+    def _uniform_fallback() -> list[dict]:
         for f in frames:
             f.unlink()
-        meta = get_metadata(video_path)
-        full_duration = meta["duration_seconds"]
-        eff_start = start_seconds if start_seconds is not None else 0.0
-        eff_end = end_seconds if end_seconds is not None else full_duration
-        eff_duration = max(0.1, eff_end - eff_start)
         fps, _ = auto_fps(eff_duration, max_frames=max_frames)
         return extract(
             video_path, out_dir,
             fps=fps, resolution=resolution, max_frames=max_frames,
             start_seconds=start_seconds, end_seconds=end_seconds,
         )
+
+    # Fallback 1: too few scene frames means this video is static-ish.
+    if len(frames) < uniform_fallback_min:
+        return _uniform_fallback()
+
+    # Fallback 2: enough frames, but bunched. Needs trustworthy timestamps —
+    # pts parsing is padded with zeros when it comes up short, and those zeros
+    # would fabricate a gap.
+    if 2 <= len(frames) <= len(pts_times):
+        marks = [0.0] + sorted(pts_times[:len(frames)]) + [eff_duration]
+        largest_gap = max(b - a for a, b in zip(marks, marks[1:]))
+        if largest_gap > max_gap_ratio * eff_duration:
+            return _uniform_fallback()
 
     offset = start_seconds or 0.0
     if len(pts_times) < len(frames):
