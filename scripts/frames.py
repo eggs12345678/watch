@@ -185,6 +185,23 @@ def extract(
     ]
 
 
+def _run_variable_frame_rate(build_cmd) -> subprocess.CompletedProcess:
+    """Run an ffmpeg command in variable-frame-rate mode, across ffmpeg versions.
+
+    `-vsync` was deprecated in ffmpeg 5.0 and removed outright in 8.0, which
+    makes the scene-change pass die with `Unrecognized option 'vsync'` on any
+    current install. `-fps_mode` is the replacement but only exists from 5.0
+    onward, so hardcoding either flag breaks one end of the supported range.
+
+    Try the modern flag first; fall back once if this build predates it. The
+    fallback costs nothing on ffmpeg >= 5.0 — the happy path runs one process.
+    """
+    result = subprocess.run(build_cmd(["-fps_mode", "vfr"]), capture_output=True, text=True)
+    if result.returncode != 0 and "fps_mode" in result.stderr:
+        result = subprocess.run(build_cmd(["-vsync", "vfr"]), capture_output=True, text=True)
+    return result
+
+
 def extract_scene_change(
     video_path: str,
     out_dir: Path,
@@ -220,23 +237,26 @@ def extract_scene_change(
     vf = f"select='{select_expr}',metadata=mode=print:file=-,scale={resolution}:-2"
 
     output_pattern = str(out_dir / "frame_%04d.jpg")
-    cmd: list[str] = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-    ]
-    if start_seconds is not None:
-        cmd += ["-ss", f"{start_seconds:.3f}"]
-    if end_seconds is not None:
-        cmd += ["-to", f"{end_seconds:.3f}"]
-    cmd += [
-        "-i", str(Path(video_path).resolve()),
-        "-vf", vf,
-        "-vsync", "vfr",
-        "-frames:v", str(max_frames),
-        "-q:v", "4",
-        output_pattern,
-    ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    def build_cmd(rate_flag: list[str]) -> list[str]:
+        cmd: list[str] = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        ]
+        if start_seconds is not None:
+            cmd += ["-ss", f"{start_seconds:.3f}"]
+        if end_seconds is not None:
+            cmd += ["-to", f"{end_seconds:.3f}"]
+        cmd += [
+            "-i", str(Path(video_path).resolve()),
+            "-vf", vf,
+            *rate_flag,
+            "-frames:v", str(max_frames),
+            "-q:v", "4",
+            output_pattern,
+        ]
+        return cmd
+
+    result = _run_variable_frame_rate(build_cmd)
     if result.returncode != 0:
         raise SystemExit(f"ffmpeg scene-change extraction failed: {result.stderr.strip()}")
 
