@@ -9,6 +9,9 @@ CONFIG_FILE="$HOME/.config/watch/.env"
 # Warn if the secrets file has loose permissions.
 if [[ -f "$CONFIG_FILE" ]]; then
   perms=$(stat -c '%a' "$CONFIG_FILE" 2>/dev/null || stat -f '%Lp' "$CONFIG_FILE" 2>/dev/null || echo "")
+  # Git Bash/MSYS/Cygwin do not map NTFS ACLs onto mode bits — stat always
+  # reports 644 no matter how the ACL is set, so the check can never pass.
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) perms="" ;; esac
   if [[ -n "$perms" && "$perms" != "600" && "$perms" != "400" ]]; then
     echo "/watch: WARNING — $CONFIG_FILE has permissions $perms (should be 600)."
     echo "  Fix: chmod 600 $CONFIG_FILE"
