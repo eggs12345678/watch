@@ -8,6 +8,7 @@ zooming in for detail).
 """
 from __future__ import annotations
 
+import functools
 import json
 import shutil
 import subprocess
@@ -16,6 +17,37 @@ from pathlib import Path
 
 
 MAX_FPS = 2.0
+
+
+@functools.lru_cache(maxsize=1)
+def _rate_control_flag() -> str:
+    """Return the frame-rate-control flag this ffmpeg build actually accepts.
+
+    `-vsync` was deprecated in ffmpeg 5.0 in favour of `-fps_mode` and later
+    removed outright: ffmpeg 9 aborts with "Unrecognized option 'vsync'" while
+    still splitting the argument list, so scene-change extraction died before
+    decoding a single frame and took the whole /watch run with it.
+
+    Probe the binary's own option list rather than parsing its version string —
+    nightly builds report dates (`N-109874-g5f7f0e`, `2021-01-01-git-…`) rather
+    than release numbers, so a version comparison would misjudge them.
+    """
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-h", "full"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "-fps_mode"
+    if "fps_mode" in result.stdout:
+        return "-fps_mode"
+    if "vsync" in result.stdout:
+        return "-vsync"
+    return "-fps_mode"
 
 
 def _clamp_fps(fps: float, duration_seconds: float, max_frames: int) -> tuple[float, int]:
@@ -57,7 +89,7 @@ def format_time(seconds: float) -> str:
 
 def get_metadata(video_path: str) -> dict:
     if shutil.which("ffprobe") is None:
-        raise SystemExit("ffprobe is not installed. Install with: brew install ffmpeg")
+        raise SystemExit("ffprobe is not installed. Run `python3 $CLAUDE_PLUGIN_ROOT/scripts/setup.py` to install it.")
 
     result = subprocess.run(
         [
@@ -141,7 +173,7 @@ def extract(
     end_seconds: float | None = None,
 ) -> list[dict]:
     if shutil.which("ffmpeg") is None:
-        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+        raise SystemExit("ffmpeg is not installed. Run `python3 $CLAUDE_PLUGIN_ROOT/scripts/setup.py` to install it.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for existing in out_dir.glob("frame_*.jpg"):
@@ -209,7 +241,7 @@ def extract_scene_change(
     sampling — sparse frames > almost no frames.
     """
     if shutil.which("ffmpeg") is None:
-        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+        raise SystemExit("ffmpeg is not installed. Run `python3 $CLAUDE_PLUGIN_ROOT/scripts/setup.py` to install it.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for existing in out_dir.glob("frame_*.jpg"):
@@ -230,7 +262,7 @@ def extract_scene_change(
     cmd += [
         "-i", str(Path(video_path).resolve()),
         "-vf", vf,
-        "-vsync", "vfr",
+        _rate_control_flag(), "vfr",
         "-frames:v", str(max_frames),
         "-q:v", "4",
         output_pattern,

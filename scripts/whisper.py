@@ -85,7 +85,7 @@ def load_api_key(preferred: str | None = None) -> tuple[str, str] | tuple[None, 
 def extract_audio(video_path: str, out_path: Path) -> Path:
     """Extract mono 16kHz 64kbps mp3 — ~480 kB/min, fits any Whisper limit."""
     if shutil.which("ffmpeg") is None:
-        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+        raise SystemExit("ffmpeg is not installed. Run `python3 $CLAUDE_PLUGIN_ROOT/scripts/setup.py` to install it.")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
