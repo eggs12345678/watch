@@ -2,6 +2,15 @@
 
 All notable changes to `/watch` are documented here.
 
+## [0.2.1] — 2026-08-31
+
+### Fixed
+- `frames.py`: replaced `-vsync vfr` with `-fps_mode vfr`. Recent ffmpeg (9.x) removed the deprecated `-vsync` option, which made scene-change extraction fail with "Unrecognized option 'vsync'". `-fps_mode` has been available since ffmpeg 5.1.
+
+### Added
+- `SKILL.md` failure mode for stale yt-dlp extractors ("Unexpected response from webpage request" on TikTok → `yt-dlp -U`).
+- `SKILL.md` Step 4.4 Windows equivalent for the Obsidian URL-scheme open (`Start-Process`).
+
 ## [0.2.0] — 2026-05-25
 
 Based on [bradautomates/claude-video](https://github.com/bradautomates/claude-video) v0.1.3 by Bradley Bonanno (MIT). Its pipeline (yt-dlp + ffmpeg + Whisper) is preserved; everything below is additive.

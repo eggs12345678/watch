@@ -177,11 +177,12 @@ When `$VAULT_DIR` resolves:
 1. **Derive the slug now** (do not wait for Step 4.5). Take the video title from `report.md` frontmatter, slugify (lowercase, ASCII-only, hyphens, max 60 chars), append `-YYYY-MM-DD`. Example: `karpathy-claude-md-43k-installs-2026-05-24`.
 2. **Create the staging dir:** `mkdir -p "$VAULT_DIR/raw/watched/<slug>"`.
 3. **Copy `report.md` + every hero frame** (filenames in the report frontmatter under `hero_frames:`) into that dir. The report MUST live inside the vault for Obsidian to open it.
-4. **Open in Obsidian via URL scheme** (macOS). The vault URL-name is the final component of `$VAULT_DIR` with spaces URL-encoded as `%20`:
+4. **Open in Obsidian via URL scheme.** The vault URL-name is the final component of `$VAULT_DIR` with spaces URL-encoded as `%20`. macOS:
    ```bash
    VAULT_NAME=$(basename "$VAULT_DIR" | sed 's/ /%20/g')
    open "obsidian://open?vault=${VAULT_NAME}&file=raw/watched/<slug>/report.md"
    ```
+   Windows (PowerShell): `Start-Process "obsidian://open?vault=<name>&file=<url-encoded relative path>"` (or `start "" "obsidian://..."` from cmd).
    The `file=` value is the path relative to the vault root, no leading slash. Don't ask permission — the user has already opted in by running /watch.
 5. **Echo the vault-relative path in chat** on its own line: `📄 Report (open in Obsidian): raw/watched/<slug>/report.md`. So if Obsidian was closed / the URL handler missed, the user can still navigate to it manually inside the vault.
 
@@ -236,6 +237,7 @@ Both keys live in `~/.config/watch/.env`. The script prefers Groq when both are 
 - **No transcript available** → captions missing AND (no Whisper key OR Whisper API failed). Script prints a hint pointing to setup. Proceed frames-only and tell the user.
 - **Long video warning printed** → acknowledge it in your answer. Offer to re-run focused on a specific section via `--start`/`--end` rather than a sparse full-video scan.
 - **Download fails** → yt-dlp's error goes to stderr. If it's a login-required or region-locked video, tell the user plainly; do not keep retrying.
+- **"Unexpected response from webpage request" (common on TikTok)** → the yt-dlp extractor is stale, not a real site failure. Run `yt-dlp -U` (or upgrade via your package manager) and retry once.
 - **Whisper request fails** → the error is printed to stderr (likely: invalid key, rate limit, or 25 MB upload limit on a very long video). The report will say "none available" for transcript. You can retry with `--whisper openai` if Groq failed (or vice versa).
 - **Report has unfilled `<!-- pending Claude fill: ... -->` markers** → you skipped Step 4. Go back, read the report, fill every marker via Edit, then offer ingest. Never ingest a half-filled report — the Second Brain Ingest op will produce sparse/wrong entity pages.
 - **Ingest fails partway** → do not roll back. The Second Brain Ingest op is idempotent on re-run (it updates existing pages rather than duplicating). Tell the user what failed, leave the staged artifact in `raw/watched/<slug>/`, and they can re-run by saying "ingest the staged report at `<slug>`".
