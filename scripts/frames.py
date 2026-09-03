@@ -230,7 +230,9 @@ def extract_scene_change(
     cmd += [
         "-i", str(Path(video_path).resolve()),
         "-vf", vf,
-        "-vsync", "vfr",
+        # ffmpeg 7.0 removed the "-vsync" alias (deprecated since 5.1); use
+        # "-fps_mode vfr" to keep one output frame per selected input frame.
+        "-fps_mode", "vfr",
         "-frames:v", str(max_frames),
         "-q:v", "4",
         output_pattern,
