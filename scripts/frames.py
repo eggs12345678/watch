@@ -9,6 +9,7 @@ zooming in for detail).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,11 @@ from pathlib import Path
 
 
 MAX_FPS = 2.0
+
+_FFMPEG_INSTALL_HINT = (
+    "winget install Gyan.FFmpeg" if os.name == "nt"
+    else "brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
+)
 
 
 @lru_cache(maxsize=1)
@@ -162,7 +168,7 @@ def extract(
     end_seconds: float | None = None,
 ) -> list[dict]:
     if shutil.which("ffmpeg") is None:
-        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+        raise SystemExit(f"ffmpeg is not installed. Install with: {_FFMPEG_INSTALL_HINT}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for existing in out_dir.glob("frame_*.jpg"):
@@ -230,7 +236,7 @@ def extract_scene_change(
     sampling — sparse frames > almost no frames.
     """
     if shutil.which("ffmpeg") is None:
-        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+        raise SystemExit(f"ffmpeg is not installed. Install with: {_FFMPEG_INSTALL_HINT}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for existing in out_dir.glob("frame_*.jpg"):
