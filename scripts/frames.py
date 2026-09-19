@@ -9,13 +9,40 @@ zooming in for detail).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 
 MAX_FPS = 2.0
+
+_FFMPEG_INSTALL_HINT = (
+    "winget install Gyan.FFmpeg" if os.name == "nt"
+    else "brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
+)
+
+
+@lru_cache(maxsize=1)
+def _vfr_flag() -> tuple[str, str]:
+    """Return the variable-frame-rate flag this ffmpeg build understands.
+
+    ffmpeg 5.0 introduced `-fps_mode`; ffmpeg 9 removed the old `-vsync`
+    alias outright, so a hardcoded `-vsync vfr` makes every scene-change
+    extraction abort with "Unrecognized option 'vsync'". Probe once, cache.
+    """
+    try:
+        probe = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-h", "full"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if "-fps_mode" in (probe.stdout or "") + (probe.stderr or ""):
+            return ("-fps_mode", "vfr")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return ("-vsync", "vfr")
 
 
 def _clamp_fps(fps: float, duration_seconds: float, max_frames: int) -> tuple[float, int]:
@@ -141,7 +168,7 @@ def extract(
     end_seconds: float | None = None,
 ) -> list[dict]:
     if shutil.which("ffmpeg") is None:
-        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+        raise SystemExit(f"ffmpeg is not installed. Install with: {_FFMPEG_INSTALL_HINT}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for existing in out_dir.glob("frame_*.jpg"):
@@ -209,7 +236,7 @@ def extract_scene_change(
     sampling — sparse frames > almost no frames.
     """
     if shutil.which("ffmpeg") is None:
-        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+        raise SystemExit(f"ffmpeg is not installed. Install with: {_FFMPEG_INSTALL_HINT}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for existing in out_dir.glob("frame_*.jpg"):
@@ -230,7 +257,7 @@ def extract_scene_change(
     cmd += [
         "-i", str(Path(video_path).resolve()),
         "-vf", vf,
-        "-vsync", "vfr",
+        *_vfr_flag(),
         "-frames:v", str(max_frames),
         "-q:v", "4",
         output_pattern,

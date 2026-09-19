@@ -7,6 +7,7 @@ transcribe.py can parse them without needing Whisper.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,17 @@ from urllib.parse import urlparse
 
 
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".wmv"}
+
+# A 100-frame preview never needs a multi-gigabyte source, and a live stream
+# has no end at all - without these the download is unbounded in both size
+# and time.
+_YTDLP_INSTALL_HINT = (
+    "winget install yt-dlp.yt-dlp" if os.name == "nt"
+    else "brew install yt-dlp (macOS) or pipx install yt-dlp (Linux)"
+)
+
+MAX_DOWNLOAD_SIZE = "2G"
+DOWNLOAD_TIMEOUT_SECONDS = 1800
 
 
 def is_url(source: str) -> bool:
@@ -61,7 +73,7 @@ def _pick_video(out_dir: Path) -> Path | None:
 
 def download_url(url: str, out_dir: Path) -> dict:
     if shutil.which("yt-dlp") is None:
-        raise SystemExit("yt-dlp is not installed. Install with: brew install yt-dlp")
+        raise SystemExit(f"yt-dlp is not installed. Install with: {_YTDLP_INSTALL_HINT}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     output_template = str(out_dir / "video.%(ext)s")
@@ -79,6 +91,8 @@ def download_url(url: str, out_dir: Path) -> dict:
         "--convert-subs", "vtt",
         "--no-playlist",
         "--ignore-errors",
+        "--match-filter", "!is_live",
+        "--max-filesize", MAX_DOWNLOAD_SIZE,
         "-o", output_template,
         "--",
         url,
@@ -86,7 +100,16 @@ def download_url(url: str, out_dir: Path) -> dict:
 
     # yt-dlp may exit non-zero if a subtitle variant fails (e.g. 429) even when
     # the video itself downloaded fine. Treat "video file present" as success.
-    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr)
+    try:
+        result = subprocess.run(
+            cmd, stdout=sys.stderr, stderr=sys.stderr,
+            timeout=DOWNLOAD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            f"yt-dlp exceeded {DOWNLOAD_TIMEOUT_SECONDS}s and was stopped. "
+            f"Re-run against a shorter source, or use --start/--end."
+        )
     video = _pick_video(out_dir)
     if video is None:
         raise SystemExit(
